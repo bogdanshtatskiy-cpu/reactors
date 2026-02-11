@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Draconic Sim iOS</title>
+    <title>Draconic Sim v2.3</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -15,7 +15,7 @@
         <header>
             <div class="title-area">
                 <h1>Draconic Core</h1>
-                <span class="version">v2.1</span>
+                <span class="version">v2.3</span>
             </div>
             
             <div class="ios-tabs">
@@ -35,13 +35,12 @@
                 <div class="segment-slider"></div>
             </div>
             <div class="disclaimer-text">
-                Данные актуальны для 20 TPS. Возможна погрешность ~1-2%.
+                Расчет на основе физики DE (Lua Profile)
             </div>
         </div>
 
         <main id="view-reactors" class="view-section active">
-            <div id="slots-container" class="slots-grid">
-                </div>
+            <div id="slots-container" class="slots-grid"></div>
         </main>
 
         <main id="view-summary" class="view-section hidden">
@@ -69,7 +68,7 @@
                     <div class="net-profit-bar">
                         <div class="bar-fill" id="sum-bar" style="width: 0%"></div>
                     </div>
-                    <span class="bar-label">Эффективность системы</span>
+                    <span class="bar-label">КПД Системы</span>
                 </div>
             </div>
         </main>
