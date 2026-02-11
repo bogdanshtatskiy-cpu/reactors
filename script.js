@@ -1,21 +1,20 @@
 /* Draconic Reactor Physics Engine
-   Based on TileReactorCore.java logic provided by user.
-   
-   Calibration Constants (Derived from logs 25.01-27.01):
-   - Base Field Cost: ~160,000 RF/t (at <8000C)
-   - Max Generation Multiplier: Tuned to match ~1.09M RF/t at 8000C/83% Fuel
-   - Fuel Usage Multiplier: Tuned to match ~0.000145 %/s at 8000C
+   Калибровка произведена точно по конфигам OpenComputers Lua Script
 */
 
 const CONSTANTS = {
-    BASE_FIELD_COST: 160400, // Matches the ~160k baseline in logs
-    GEN_MULTIPLIER: 575000,  // Calibrated to match log generation
-    FUEL_USE_CONST: 0.00072, // Calibrated to match log burn rate (~9 days runtime)
-    MIN_TEMP: 2000,          // Physics break down below start temp
-    MAX_TEMP: 10000
+    // Высчитано из 1.142 MRF/t при 8000C (S = 0.5)
+    BASE_MAX_RFT: 1302880,  
+    
+    // Базовое потребление щита до 8000C
+    BASE_SHIELD: 160000,    
+    
+    // Константа скорости сгорания. Высчитана так, чтобы при S=0.5 
+    // 100% топлива сгорали РОВНО за 12 дней 3 часа 43 минуты
+    BASE_FUEL_RATE: 0.0000095218 
 };
 
-// State Management
+// Стейт (состояние 5 слотов)
 let slots = [null, null, null, null, null];
 let useTicks = false;
 
@@ -24,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
 });
 
-// --- UI Logic (Tabs, Units, etc) ---
+// --- UI Навигация и Управление ---
 
 window.switchTab = function(tabName) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -61,12 +60,11 @@ window.updateSlot = function(index, field, value) {
     let val = parseFloat(value) || 0;
 
     if (field === 'fuel') val = Math.max(0, Math.min(100, val));
-    if (field === 'temp') val = Math.max(CONSTANTS.MIN_TEMP, Math.min(CONSTANTS.MAX_TEMP, val));
+    if (field === 'temp') val = Math.max(2000, Math.min(10000, val));
     
-    // Time fields
-    if (field === 'timeD') val = Math.max(0, val);
-    if (field === 'timeH') val = Math.max(0, val);
-    if (field === 'timeM') val = Math.max(0, val);
+    if (field === 'timeD' || field === 'timeH' || field === 'timeM') {
+        val = Math.max(0, val);
+    }
 
     slots[index][field] = val;
     saveAndRender();
@@ -75,134 +73,83 @@ window.updateSlot = function(index, field, value) {
 window.adjustTemp = function(index, delta) {
     if(!slots[index]) return;
     let newT = slots[index].temp + delta;
-    newT = Math.max(CONSTANTS.MIN_TEMP, Math.min(CONSTANTS.MAX_TEMP, newT));
+    newT = Math.max(2000, Math.min(10000, newT));
     slots[index].temp = newT;
     saveAndRender();
 }
 
-// --- PHYSICS ENGINE ---
+// --- ФИЗИЧЕСКИЙ ДВИЖОК DRACONIC EVOLUTION ---
 
-function solveSaturation(targetTemp, conversion) {
-    // Inverse problem: Find 'Saturation' (S) that results in a stable 'targetTemp'.
-    // Formula from prompt: 
-    // Rise = (Expo - Resist * (1-conv) + conv*1000) / 10000
-    // For stable temp, Rise should be 0 (Equilibrium).
-    // Therefore: Expo = Resist * (1 - conv) - conv * 1000
-    
-    // 1. Calculate Resist based on Temp
-    // Tn = (Temp / MaxTemp) * 50
-    // Resist = Tn^4 / (100 - Tn)
-    const maxReactTemp = 10000;
-    const tn = (targetTemp / maxReactTemp) * 50;
-    if (tn >= 100) return 0; // Singularity
-    const resist = Math.pow(tn, 4) / (100 - tn);
-
-    // 2. Calculate Required Expo
-    const conv = conversion; // 0 to 1
-    let requiredExpo = resist * (1 - conv) - (conv * 1000);
-    
-    // 3. Solve S for Expo
-    // Expo = (Si^3 / (100 - Si)) + 444.7
-    // Si^3 / (100 - Si) = requiredExpo - 444.7
-    const targetVal = requiredExpo - 444.7;
-
-    if (targetVal <= 0) return 0.99; // High saturation (cold reactor)
-
-    // Binary search for Si (0 to 99)
-    let low = 0, high = 99;
-    let si = 0;
-    for(let i=0; i<20; i++) { // 20 iterations is enough precision
-        let mid = (low + high) / 2;
-        let val = Math.pow(mid, 3) / (100 - mid);
-        if(val < targetVal) low = mid;
-        else high = mid;
-        si = mid;
-    }
-
-    // Si = (1 - S) * 99  => S = 1 - (Si / 99)
-    let s = 1 - (si / 99);
-    return Math.max(0, Math.min(1, s));
-}
-
-function getTempDrainFactor(temp) {
-    if (temp > 8000) {
-        return 1 + Math.pow(temp - 8000, 2) * 0.0000025; 
-    } else if (temp > 2000) {
-        return 1;
-    } else if (temp > 1000) {
-        return (temp - 1000) / 1000;
-    }
+// Множитель расхода поля (и топлива) в зависимости от температуры
+function getTempDrainFactor(t) {
+    if (t > 8000) return 1 + Math.pow(t - 8000, 2) * 0.0000025;
+    if (t > 2000) return 1;
+    if (t > 1000) return (t - 1000) / 1000;
     return 0;
 }
 
+// Эмуляция поведения Lua-скрипта (Saturation Target)
+function getScriptSaturation(t) {
+    if (t <= 8000) {
+        // Стандартный профиль: 12 дней (Target Saturation = 0.5)
+        return 0.50; 
+    } else if (t <= 8115) {
+        // Профиль максимальной выработки: интерполяция от S=0.5 к S=0.07 (как в логах 8115C)
+        return 0.50 - ((t - 8000) / 115) * 0.43;
+    } else {
+        // Выше 8115C скрипты держат Насыщение около нуля для агрессивного сжигания
+        return Math.max(0, 0.07 - ((t - 8115) / 885) * 0.07); 
+    }
+}
+
 function calcStats(slot) {
-    // 1. Inputs
     const T = slot.temp;
     const FuelPct = slot.fuel; 
     
-    // "Conversion" in logic is ratio of Used/Total.
-    // Slider is "Fuel Remaining %". So Conv = 1 - (Fuel/100)
-    // However, the formula conv range is likely 0 to 1 approx.
+    // В моде конверсия идет от 0 (топлива 100%) до 1 (топлива 0%)
     const conv = 1 - (FuelPct / 100);
 
-    // 2. Solve Physics State
-    const S = solveSaturation(T, conv);
+    const S = getScriptSaturation(T);
     const drainFactor = getTempDrainFactor(T);
 
-    // 3. Calculate Rates
-    // Formula 3: MaxRFt
-    // baseMax = ... * 1.5
-    // maxRFt = baseMax * (1 + conv * 2)
-    const baseMaxRFt = CONSTANTS.GEN_MULTIPLIER; 
-    const maxRFt = baseMaxRFt * (1 + conv * 2);
-
-    // Formula 4: Generation
-    // generationRate = (1 - S) * maxRFt
+    // 1. Текущая генерация: maxRFt = baseMaxRFt * (1 + conv * 2)
+    const maxRFt = CONSTANTS.BASE_MAX_RFT * (1 + conv * 2);
     const currentGen = (1 - S) * maxRFt;
 
-    // Formula 5: Field Drain
-    // Logs show ~160k base. Logic has formula for multiplier.
-    const shieldCost = CONSTANTS.BASE_FIELD_COST * drainFactor;
+    // 2. Расход щита
+    const shieldCost = CONSTANTS.BASE_SHIELD * drainFactor;
     const currentNet = currentGen - shieldCost;
 
-    // Formula 6: Fuel Use
-    // fuelUseRate = tempDrainFactor * (1 - S) * CONST
-    const fuelConsumptionRate = drainFactor * (1 - S) * CONSTANTS.FUEL_USE_CONST; 
-    // Note: This rate is in "% per tick" (approx, adjusted by constant)
-    // We need % per second for display
-    const fuelRatePerSec = fuelConsumptionRate * 20;
+    // 3. Скорость расхода топлива (% в тик -> % в сек)
+    const fuelRateTick = drainFactor * (1 - S) * CONSTANTS.BASE_FUEL_RATE;
+    const fuelRateSec = fuelRateTick * 20;
 
-    // --- Simulation ---
+    // 4. Оставшееся время до 0%
+    const timeRemainingSec = (fuelRateSec > 0) ? (FuelPct / fuelRateSec) : 0;
+
+    // --- СИМУЛЯЦИЯ ЗА ПЕРИОД ---
     const simMinutes = (slot.timeD * 1440) + (slot.timeH * 60) + slot.timeM;
     const simSec = simMinutes * 60;
 
-    // Fuel consumed in simulation
-    const consumedPct = fuelRatePerSec * simSec;
+    const consumedPct = fuelRateSec * simSec;
     let endFuel = FuelPct - consumedPct;
-    
     let effectiveSec = simSec;
+    
     if (endFuel < 0) {
         endFuel = 0;
-        effectiveSec = (FuelPct / fuelRatePerSec);
+        effectiveSec = (fuelRateSec > 0) ? (FuelPct / fuelRateSec) : 0;
     }
 
-    // Time until empty (from current)
-    const timeRemainingSec = (fuelRatePerSec > 0) ? (FuelPct / fuelRatePerSec) : 0;
-
-    // Average Generation during simulation
-    // As fuel burns, 'conv' increases.
-    // 'conv' increasing -> 'maxRFt' increases -> Gen increases.
-    // However, 'S' might shift slightly to maintain Temp. 
-    // For specific simulation, we average start and end states.
-    
+    // Вычисляем генерацию в конце периода (т.к. conv вырастет)
     const endConv = 1 - (endFuel / 100);
-    const endS = solveSaturation(T, endConv);
-    const endMaxRFt = baseMaxRFt * (1 + endConv * 2);
-    const endGen = (1 - endS) * endMaxRFt;
+    const endMaxRFt = CONSTANTS.BASE_MAX_RFT * (1 + endConv * 2);
+    const endGen = (1 - S) * endMaxRFt;
 
+    // Линейное усреднение генерации за выбранный период
     const avgGen = (currentGen + endGen) / 2;
     const totalTicks = effectiveSec * 20;
     
+    // Итоговая чистая прибыль
     const simTotalNet = (avgGen * totalTicks) - (shieldCost * totalTicks);
 
     return {
@@ -214,7 +161,7 @@ function calcStats(slot) {
     };
 }
 
-// --- RENDERER ---
+// --- РЕНДЕРИНГ ИНТЕРФЕЙСА ---
 
 function render() {
     const container = document.getElementById('slots-container');
@@ -242,7 +189,12 @@ function render() {
                 <div class="reactor-card">
                     <div class="card-header">
                         <span class="reactor-name">Реактор #${index + 1}</span>
-                        <button class="delete-btn" onclick="removeReactor(${index})">×</button>
+                        <button class="delete-btn" onclick="removeReactor(${index})">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
                     </div>
 
                     <div class="control-row">
@@ -251,11 +203,13 @@ function render() {
                             <div class="t-btn-group">
                                 <button class="mini-btn" onclick="adjustTemp(${index}, -1000)">-1k</button>
                                 <button class="mini-btn" onclick="adjustTemp(${index}, -100)">-100</button>
+                                <button class="mini-btn" onclick="adjustTemp(${index}, -10)">-10</button>
                             </div>
                             <div class="temp-display">${slot.temp}</div>
                              <div class="t-btn-group">
-                                <button class="mini-btn" onclick="adjustTemp(${index}, 1000)">+1k</button>
+                                <button class="mini-btn" onclick="adjustTemp(${index}, 10)">+10</button>
                                 <button class="mini-btn" onclick="adjustTemp(${index}, 100)">+100</button>
+                                <button class="mini-btn" onclick="adjustTemp(${index}, 1000)">+1k</button>
                             </div>
                         </div>
                     </div>
@@ -315,7 +269,7 @@ function render() {
         }
     });
 
-    // Summary Update
+    // Сводка (Summary View)
     document.getElementById('sum-count').innerText = `${activeCount}/5`;
     document.getElementById('sum-gen').innerText = fmt(totalGen);
     document.getElementById('sum-shield').innerText = fmt(totalShield);
@@ -324,18 +278,20 @@ function render() {
     document.getElementById('sum-bar').style.width = Math.max(0, eff) + "%";
 }
 
-// Utils
+// Утилиты форматирования
 function fmt(num) {
     if(useTicks) return Math.round(num).toLocaleString() + " RF/t";
     return fmtLarge(num * 20) + "/s";
 }
+
 function fmtLarge(num) {
-    if(num > 1e12) return (num/1e12).toFixed(2)+"T";
-    if(num > 1e9) return (num/1e9).toFixed(2)+"B";
-    if(num > 1e6) return (num/1e6).toFixed(2)+"M";
-    if(num > 1e3) return (num/1e3).toFixed(1)+"k";
-    return Math.round(num).toLocaleString();
+    if(num > 1e12) return (num/1e12).toFixed(2)+" TRF";
+    if(num > 1e9) return (num/1e9).toFixed(2)+" BRF";
+    if(num > 1e6) return (num/1e6).toFixed(2)+" MRF";
+    if(num > 1e3) return (num/1e3).toFixed(1)+" kRF";
+    return Math.round(num).toLocaleString() + " RF";
 }
+
 function fmtTimeDetailed(sec) {
     if(sec <= 0 || !isFinite(sec)) return "∞";
     const d = Math.floor(sec / 86400);
@@ -346,16 +302,19 @@ function fmtTimeDetailed(sec) {
     if(d > 0) str += `${d}д `;
     if(h > 0) str += `${h}ч `;
     str += `${m}м`;
-    return str;
+    
+    const totalH = (sec / 3600).toFixed(1);
+    return `${str} (${totalH}ч)`;
 }
 
-// Storage
+// Сохранение и загрузка (LocalStorage)
 function saveAndRender() {
-    localStorage.setItem('draconic_slots_v4', JSON.stringify(slots));
+    localStorage.setItem('draconic_slots_physics_v1', JSON.stringify(slots));
     render();
 }
+
 function loadData() {
-    const d = localStorage.getItem('draconic_slots_v4');
+    const d = localStorage.getItem('draconic_slots_physics_v1');
     if(d) {
         try { slots = JSON.parse(d); } catch(e) {}
     }
