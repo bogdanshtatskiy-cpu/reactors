@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draconic Reactor Sim | iOS 26</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-orb orb-1"></div>
+    <div class="background-orb orb-2"></div>
+
+    <div class="app-container">
+        <header>
+            <h1>Draconic Core</h1>
+            <p>Reactor Simulator v1.0</p>
+            <div class="global-controls">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="unitToggle">
+                    <span class="slider"></span>
+                    <span class="label-text">SEC / TICKS</span>
+                </label>
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            <section class="glass-panel summary-panel">
+                <h2>Общая сводка (5 реакторов)</h2>
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <span class="stat-label">Всего энергии</span>
+                        <span class="stat-value highlight-energy" id="totalEnergy">0 RF</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Чистый выход / тик</span>
+                        <span class="stat-value highlight-net" id="totalNet">0 RF/t</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Расход на щиты</span>
+                        <span class="stat-value highlight-shield" id="totalShield">0 RF/t</span>
+                    </div>
+                </div>
+                <div class="disclaimer">
+                    ⚠️ Данные основаны на логах от 25-27.01.2026. Расчет при стабильных 20 TPS.
+                </div>
+            </section>
+
+            <div id="reactorsContainer" class="reactors-grid">
+                </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
